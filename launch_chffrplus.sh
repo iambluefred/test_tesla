@@ -1,39 +1,74 @@
 #!/usr/bin/bash
 
-export OMP_NUM_THREADS=1
-export MKL_NUM_THREADS=1
-export NUMEXPR_NUM_THREADS=1
-export OPENBLAS_NUM_THREADS=1
-export VECLIB_MAXIMUM_THREADS=1
-
 if [ -z "$BASEDIR" ]; then
   BASEDIR="/data/openpilot"
 fi
 
-if [ -z "$PASSIVE" ]; then
-  export PASSIVE="1"
-fi
-
 . /data/openpilot/selfdrive/car/tesla/readconfig.sh
-STAGING_ROOT="/data/safe_staging"
+source "$BASEDIR/launch_env.sh"
 
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null && pwd )"
+
+function two_init {
+  # Restrict Android and other system processes to the first two cores
+  echo 0-1 > /dev/cpuset/background/cpus
+  echo 0-1 > /dev/cpuset/system-background/cpus
+  echo 0-1 > /dev/cpuset/foreground/boost/cpus
+  echo 0-1 > /dev/cpuset/foreground/cpus
+  echo 0-1 > /dev/cpuset/android/cpus
+
+  # openpilot gets all the cores
+  echo 0-3 > /dev/cpuset/app/cpus
+
+  # Collect RIL and other possibly long-running I/O interrupts onto CPU 1
+  echo 1 > /proc/irq/78/smp_affinity_list # qcom,smd-modem (LTE radio)
+  echo 1 > /proc/irq/33/smp_affinity_list # ufshcd (flash storage)
+  echo 1 > /proc/irq/35/smp_affinity_list # wifi (wlan_pci)
+  # USB traffic needs realtime handling on cpu 3
+  [ -d "/proc/irq/733" ] && echo 3 > /proc/irq/733/smp_affinity_list # USB for LeEco
+  [ -d "/proc/irq/736" ] && echo 3 > /proc/irq/736/smp_affinity_list # USB for OP3T
+
+
+  # Check for NEOS update
+  if [ $(< /VERSION) != "$REQUIRED_NEOS_VERSION" ]; then
+    if [ -f "$DIR/scripts/continue.sh" ]; then
+      cp "$DIR/scripts/continue.sh" "/data/data/com.termux/files/continue.sh"
+    fi
+
+    if [ ! -f "$BASEDIR/prebuilt" ]; then
+      # Clean old build products, but preserve the scons cache
+      cd $DIR
+      scons --clean
+      git clean -xdf
+      git submodule foreach --recursive git clean -xdf
+    fi
+
+    "$DIR/installer/updater/updater" "file://$DIR/installer/updater/update.json"
+  else
+    if [[ $(uname -v) == "#1 SMP PREEMPT Wed Jun 10 12:40:53 PDT 2020" ]]; then
+      "$DIR/installer/updater/updater" "file://$DIR/installer/updater/update_kernel.json"
+    fi
+  fi
+
+  # One-time fix for a subset of OP3T with gyro orientation offsets.
+  # Remove and regenerate qcom sensor registry. Only done on OP3T mainboards.
+  # Performed exactly once. The old registry is preserved just-in-case, and
+  # doubles as a flag denoting we've already done the reset.
+  if ! $(grep -q "letv" /proc/cmdline) && [ ! -f "/persist/comma/op3t-sns-reg-backup" ]; then
+    echo "Performing OP3T sensor registry reset"
+    mv /persist/sensors/sns.reg /persist/comma/op3t-sns-reg-backup &&
+      rm -f /persist/sensors/sensors_settings /persist/sensors/error_log /persist/sensors/gyro_sensitity_cal &&
+      echo "restart" > /sys/kernel/debug/msm_subsys/slpi &&
+      sleep 5  # Give Android sensor subsystem a moment to recover
+  fi
+}
 
 function launch {
   # Wifi scan
   wpa_cli IFNAME=wlan0 SCAN
 
-  #BB here was to prevent the autoupdate; need to find another way
-  # # apply update
-  # if [ $do_auto_update == "True" ]; then
-  #   if [ "$(git rev-parse HEAD)" != "$(git rev-parse @{u})" ]; then
-  #     git reset --hard @{u} &&
-  #     git clean -xdf &&
-
-  #     # Touch all files on release2 after checkout to prevent rebuild
-  #     BRANCH=$(git rev-parse --abbrev-ref HEAD)
-  #     if [[ "$BRANCH" == "release2" ]]; then
-  #         touch **
-  #     fi
+  # Remove orphaned git lock if it exists on boot
+  [ -f "$DIR/.git/index.lock" ] && rm -f $DIR/.git/index.lock
 
   # Check to see if there's a valid overlay-based update available. Conditions
   # are as follows:
@@ -43,10 +78,8 @@ function launch {
   #    switching branches/forks, which should not be overwritten.
   # 2. The FINALIZED consistent file has to exist, indicating there's an update
   #    that completed successfully and synced to disk.
- 
 
-
-  if [ $do_auto_update == "True" ] && [ -f "${BASEDIR}/.overlay_init" ]; then
+  if [ -f "${BASEDIR}/.overlay_init" ]; then
     find ${BASEDIR}/.git -newer ${BASEDIR}/.overlay_init | grep -q '.' 2> /dev/null
     if [ $? -eq 0 ]; then
       echo "${BASEDIR} has been modified, skipping overlay update installation"
@@ -58,11 +91,15 @@ function launch {
 
           mv $BASEDIR /data/safe_staging/old_openpilot
           mv "${STAGING_ROOT}/finalized" $BASEDIR
+          cd $BASEDIR
 
-          # The mv changed our working directory to /data/safe_staging/old_openpilot
-          cd "${BASEDIR}"
+          # Partial mitigation for symlink-related filesystem corruption
+          # Ensure all files match the repo versions after update
+          git reset --hard
+          git submodule foreach --recursive git reset --hard
 
           echo "Restarting launch script ${LAUNCHER_LOCATION}"
+          unset REQUIRED_NEOS_VERSION
           exec "${LAUNCHER_LOCATION}"
         else
           echo "openpilot backup found, not updating"
@@ -72,30 +109,10 @@ function launch {
     fi
   fi
 
-  # no cpu rationing for now
-  echo 0-3 > /dev/cpuset/background/cpus
-  echo 0-3 > /dev/cpuset/system-background/cpus
-  echo 0-3 > /dev/cpuset/foreground/boost/cpus
-  echo 0-3 > /dev/cpuset/foreground/cpus
-  echo 0-3 > /dev/cpuset/android/cpus
-
-  DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null && pwd )"
-
-  # Remove old NEOS update file
-  # TODO: move this code to the updater
-  if [ -d /data/neoupdate ]; then
-    rm -rf /data/neoupdate
+  # comma two init
+  if [ -f /EON ]; then
+    two_init
   fi
-
-  # Check for NEOS update
-  if [ $(< /VERSION) != "14" ]; then
-    if [ -f "$DIR/scripts/continue.sh" ]; then
-      cp "$DIR/scripts/continue.sh" "/data/data/com.termux/files/continue.sh"
-    fi
-
-    "$DIR/installer/updater/updater" "file://$DIR/installer/updater/update.json"
-  fi
-
 
   # handle pythonpath
   ln -sfn $(pwd) /data/pythonpath

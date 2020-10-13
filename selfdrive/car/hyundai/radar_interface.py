@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-import os
-import time
 from cereal import car
 from opendbc.can.parser import CANParser
 from selfdrive.car.interfaces import RadarInterfaceBase
@@ -24,9 +22,7 @@ def get_radar_can_parser(CP):
 
 class RadarInterface(RadarInterfaceBase):
   def __init__(self, CP):
-    # radar
-    self.pts = {}
-    self.delay = 0  # Delay of radar
+    super().__init__(CP)
     self.rcp = get_radar_can_parser(CP)
     self.updated_messages = set()
     self.trigger_msg = 0x420
@@ -35,10 +31,7 @@ class RadarInterface(RadarInterfaceBase):
 
   def update(self, can_strings):
     if self.radar_off_can:
-      if 'NO_RADAR_SLEEP' not in os.environ:
-        time.sleep(0.05)  # radard runs on RI updates
-
-      return car.RadarData.new_message()
+      return super().update(None)
 
     vls = self.rcp.update_strings(can_strings)
     self.updated_messages.update(vls)
