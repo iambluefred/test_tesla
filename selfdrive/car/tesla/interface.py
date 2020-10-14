@@ -3,11 +3,7 @@ from cereal import car, tesla
 from common.numpy_fast import clip, interp
 from common.realtime import DT_CTRL
 from selfdrive.config import Conversions as CV
-from selfdrive.controls.lib.drive_helpers import (
-    create_event,
-    EventTypes as ET,
-    get_events,
-)
+from selfdrive.controls.lib.events import ET
 from selfdrive.controls.lib.vehicle_model import VehicleModel
 from selfdrive.car.tesla.values import CruiseButtons, CM, BP, AH, CAR, DBC
 from common.params import read_db
@@ -399,11 +395,7 @@ class CarInterface(CarInterfaceBase):
             if (
                 self.can_invalid_count >= 100
             ):  # BB increased to 100 to see if we still get the can error messages
-                events.append(
-                    create_event(
-                        "invalidGiraffeHonda", [ET.NO_ENTRY, ET.IMMEDIATE_DISABLE]
-                    )
-                )
+                events.add(EventName.invalidGiraffeHonda)
                 self.CS.DAS_canErrors = 1
                 if self.CC.opState == 1:
                     self.CC.opState = 2
@@ -411,42 +403,29 @@ class CarInterface(CarInterfaceBase):
             self.can_invalid_count = 0
         if self.CS.steer_error:
             if not self.CS.enableHSO:
-                events.append(
-                    create_event("steerUnavailable", [ET.NO_ENTRY, ET.WARNING])
-                )
+                events.add(EventName.steerUnavailable)
         elif self.CS.steer_warning:
             if not self.CS.enableHSO:
-                events.append(
-                    create_event(
-                        "steerTempUnavailable", [ET.NO_ENTRY, ET.IMMEDIATE_DISABLE]
-                    )
-                )
+                events.add(EventName.steerTempUnavailable)
                 if self.CC.opState == 1:
                     self.CC.opState = 2
         if self.CS.brake_error:
-            events.append(
-                create_event(
-                    "brakeUnavailable",
-                    [ET.NO_ENTRY, ET.IMMEDIATE_DISABLE, ET.PERMANENT],
-                )
-            )
+            events.add(EventName.brakeUnavailable)
             if self.CC.opState == 1:
                 self.CC.opState = 2
         if not ret.gearShifter == "drive":
-            events.append(create_event("wrongGear", [ET.NO_ENTRY, ET.SOFT_DISABLE]))
+            events.add(EventName.wrongGear)
             if c.enabled:
                 self.CC.DAS_222_accCameraBlind = 1
                 self.CC.warningCounter = 300
                 self.CC.warningNeeded = 1
         if ret.doorOpen:
-            events.append(create_event("doorOpen", [ET.NO_ENTRY, ET.SOFT_DISABLE]))
+            events.add(EventName.doorOpen)
             self.CS.DAS_doorOpen = 1
             if self.CC.opState == 1:
                 self.CC.opState = 0
         if ret.seatbeltUnlatched:
-            events.append(
-                create_event("seatbeltNotLatched", [ET.NO_ENTRY, ET.IMMEDIATE_DISABLE])
-            )
+            events.add(EventName.seatbeltNotLatched)
             if c.enabled:
                 self.CC.DAS_211_accNoSeatBelt = 1
                 self.CC.warningCounter = 300
@@ -454,52 +433,48 @@ class CarInterface(CarInterfaceBase):
             if self.CC.opState == 1:
                 self.CC.opState = 2
         if self.CS.esp_disabled:
-            events.append(create_event("espDisabled", [ET.NO_ENTRY, ET.SOFT_DISABLE]))
+            events.add(EventName.espDisabled)
             if self.CC.opState == 1:
                 self.CC.opState = 2
         if not self.CS.main_on:
-            events.append(
-                create_event("wrongCarMode", [ET.NO_ENTRY, ET.IMMEDIATE_DISABLE])
-            )
+            events.add(EventName.wrongCarMode)
             if self.CC.opState == 1:
                 self.CC.opState = 0
         if ret.gearShifter == "reverse":
-            events.append(
-                create_event("reverseGear", [ET.NO_ENTRY, ET.IMMEDIATE_DISABLE])
-            )
+            events.add(EventName.reverseGear)
             self.CS.DAS_notInDrive = 1
             if self.CC.opState == 1:
                 self.CC.opState = 0
         if ret.gearShifter == "drive":
             self.CS.DAS_notInDrive = 0
         if self.CS.brake_hold:
-            events.append(create_event("brakeHold", [ET.NO_ENTRY, ET.USER_DISABLE]))
+            events.add(EventName.brakeHold)
             if self.CC.opState == 1:
                 self.CC.opState = 0
         if self.CS.park_brake:
-            events.append(create_event("parkBrake", [ET.NO_ENTRY, ET.USER_DISABLE]))
+            events.add(EventName.parkBrake)
             if self.CC.opState == 1:
                 self.CC.opState = 0
         if (not c.enabled) and (self.CC.opState == 1):
             self.CC.opState = 0
 
         if self.CP.enableCruise and ret.vEgo < self.CP.minEnableSpeed:
-            events.append(create_event("speedTooLow", [ET.NO_ENTRY]))
+            events.add(EventName.speedTooLow)
 
         # Standard OP method to disengage:
         # disable on pedals rising edge or when brake is pressed and speed isn't zero
         #    if (ret.gasPressed and not self.gas_pressed_prev) or \
         #       (ret.brakePressed and (not self.brake_pressed_prev or ret.vEgo > 0.001)):
-        #      events.append(create_event('steerTempUnavailable', [ET.NO_ENTRY, ET.IMMEDIATE_DISABLE]))
+        #       events.add(EventName.steerTempUnavailable)
 
         # if (self.CS.cstm_btns.get_button_status("brake")>0):
         #  if ((self.CS.brake_pressed !=0) != self.brake_pressed_prev): #break not canceling when pressed
         #  self.CS.cstm_btns.set_button_status("brake", 2 if self.CS.brake_pressed != 0 else 1)
         # else:
-        #  if ret.brakePressed:
-        #    events.append(create_event('pedalPressed', [ET.NO_ENTRY, ET.USER_DISABLE]))
+        #  if ret.brakePressed:i
+        #    events.add(EventName.pedalPressed)
         # if ret.gasPressed:
-        #  events.append(create_event('pedalPressed', [ET.PRE_ENABLE]))
+        #   events.add(EventName.pedalPressed)
 
         # it can happen that car cruise disables while comma system is enabled: need to
         # keep braking if needed or if the speed is very low
@@ -510,11 +485,11 @@ class CarInterface(CarInterfaceBase):
         ):
             # non loud alert if cruise disbales below 25mph as expected (+ a little margin)
             if ret.vEgo < self.CP.minEnableSpeed + 2.0:
-                events.append(create_event("speedTooLow", [ET.IMMEDIATE_DISABLE]))
+                events.add(EventName.speedTooLow)
             else:
-                events.append(create_event("cruiseDisabled", [ET.IMMEDIATE_DISABLE]))
+                events.add(EventName.cruiseDisabled)
         if self.CS.CP.minEnableSpeed > 0 and ret.vEgo < 0.001:
-            events.append(create_event("manualRestart", [ET.WARNING]))
+            events.add(EventName.manualRestart)
 
         cur_time = self.frame * DT_CTRL
         enable_pressed = False
@@ -529,7 +504,7 @@ class CarInterface(CarInterfaceBase):
 
             # do disable on button down
             if b.type == "cancel" and b.pressed:
-                events.append(create_event("buttonCancel", [ET.USER_DISABLE]))
+                events.add(EventName.buttonCancel)
 
         if self.CP.enableCruise:
             # KEEP THIS EVENT LAST! send enable event if button is pressed and there are
@@ -557,7 +532,7 @@ class CarInterface(CarInterfaceBase):
                     self.CC.warningCounter = 300
                     self.CC.warningNeeded = 1
                 else:
-                    events.append(create_event("buttonEnable", [ET.ENABLE]))
+                    events.add(EventName.buttonEnable)
                 self.last_enable_sent = cur_time
         elif enable_pressed:
             if ret.seatbeltUnlatched:
@@ -573,7 +548,7 @@ class CarInterface(CarInterfaceBase):
                 self.CC.warningCounter = 300
                 self.CC.warningNeeded = 1
             else:
-                events.append(create_event("buttonEnable", [ET.ENABLE]))
+                events.add(EventName.buttonEnable)
 
         ret.events = events
         ret.canMonoTimes = canMonoTimes

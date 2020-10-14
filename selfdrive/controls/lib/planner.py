@@ -39,7 +39,7 @@ _A_TOTAL_MAX_V = [1.7, 3.2]
 _A_TOTAL_MAX_BP = [20., 40.]
 
 
-def calc_cruise_accel_limits(v_ego, following, is_tesla=False):i
+def calc_cruise_accel_limits(v_ego, following, is_tesla=False):
   if is_telsa:
     a_cruise_min = interp(v_ego, _A_CRUISE_MIN_BP, _A_CRUISE_MIN_V_TESLA)
 

@@ -54,7 +54,6 @@ def long_control_state_trans(active, long_control_state, v_ego, v_target, v_pid,
 
 class LongControl():
   def __init__(self, CP, compute_gb):
-<<<<<<< HEAD
 
     kdBp = [0, 5., 22.,35.]
     kdV = [0.02, 0.02, 0.022, 0.025]
