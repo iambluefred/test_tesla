@@ -573,6 +573,7 @@ class ConfigFile:
         )
         file_changed |= didUpdate
 
+        """ disabled during 0.7.9 merge
         # check camera_id values against LiveParams
         savedRoadCameraID = params.get("RoadUsbCameraID")
         savedDriverCameraID = params.get("DriverUsbCameraID")
@@ -592,7 +593,7 @@ class ConfigFile:
             params.put("DriverUsbCameraFlip", "%d" % into.driverCameraFlip)
         if into.roadCameraFlip != savedRoadCameraFlip:
             params.put("RoadUsbCameraFlip", "%d" % into.roadCameraFlip)
-
+        """
         into.shouldLogCanErrors, didUpdate = self.read_config_entry(
             config,
             configr,

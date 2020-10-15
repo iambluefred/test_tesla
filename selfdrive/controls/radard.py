@@ -99,7 +99,7 @@ def get_lead(v_ego, ready, clusters, lead_msg, low_speed_override=True,use_tesla
 
 
 class RadarD():
-  def __init__(self, radar_ts, RI,use_tesla_radar, delay=0):
+  def __init__(self, radar_ts, RI, use_tesla_radar, delay=0):
     self.current_time = 0
     self.RI = RI
     self.tracks = defaultdict(dict)
@@ -117,9 +117,11 @@ class RadarD():
     self.ready = False
     self.icCarLR = None
     self.use_tesla_radar = use_tesla_radar
+    """ DIsabled in 0.7.9 merge because RI.TRACK_RIGHT_LANE doesn't exist
     if self.use_tesla_radar:
       if (RI.TRACK_RIGHT_LANE or RI.TRACK_LEFT_LANE):
         self.icCarLR = messaging.pub_sock('uiIcCarLR')
+    """
     
     self.lane_width = 3.0
     #only used for left and right lanes
@@ -135,11 +137,12 @@ class RadarD():
       self.v_ego_hist.append(self.v_ego)
     if sm.updated['model']:
       self.ready = True
+    """ Disabled in 0.7.9 merge
     if self.use_tesla_radar:
       if sm.updated['pathPlan']:
         self.lane_width = sm['pathPlan'].laneWidth
         self.dPoly = sm['pathPlan'].dPoly
-
+    """
     path_y = np.polyval(self.dPoly, self.path_x)
 
     ar_pts = {}
