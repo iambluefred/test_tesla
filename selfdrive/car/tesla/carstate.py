@@ -255,7 +255,7 @@ class CarState(CarStateBase):
         # Tesla Model
         self.teslaModelDetected = 1
         self.teslaModel = self.params.get("TeslaModel")
-        if self.teslaModel is not None:
+        if self.teslaModel:
             self.teslaModel = self.teslaModel.decode()
         if self.teslaModel is None:
             self.teslaModel = "S"

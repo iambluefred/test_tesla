@@ -105,6 +105,15 @@ keys = {
   "Offroad_IsTakingSnapshot": [TxType.CLEAR_ON_MANAGER_START],
   "Offroad_NeosUpdate": [TxType.CLEAR_ON_MANAGER_START],
   "Offroad_UpdateFailed": [TxType.CLEAR_ON_MANAGER_START],
+  
+  # BB Tesla branch stuff
+  "DriverUsbCameraID": [TxType.PERSISTENT],
+  "RoadUsbCameraID": [TxType.PERSISTENT],
+  "DriverUsbCameraFx": [TxType.PERSISTENT],
+  "DriverUsbCameraFlip": [TxType.PERSISTENT],
+  "RoadUsbCameraFx": [TxType.PERSISTENT],
+  "RoadUsbCameraFlip": [TxType.PERSISTENT],
+  "TeslaModel": [TxType.PERSISTENT],
 }
 
 

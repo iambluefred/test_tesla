@@ -1,6 +1,7 @@
 from cereal import log
 from common.numpy_fast import clip, interp
 from selfdrive.controls.lib.pid import PIController
+from selfdrive.controls.lib.pid_real import PIDController
 
 LongCtrlState = log.ControlsState.LongControlState
 

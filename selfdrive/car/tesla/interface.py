@@ -3,7 +3,7 @@ from cereal import car, tesla
 from common.numpy_fast import clip, interp
 from common.realtime import DT_CTRL
 from selfdrive.config import Conversions as CV
-from selfdrive.controls.lib.events import ET
+from selfdrive.controls.lib.events import ET, Events
 from selfdrive.controls.lib.vehicle_model import VehicleModel
 from selfdrive.car.tesla.values import CruiseButtons, CM, BP, AH, CAR, DBC
 from common.params import read_db
@@ -17,6 +17,8 @@ from selfdrive.car import (
 from selfdrive.car.tesla.readconfig import CarSettings
 from selfdrive.controls.lib.planner import _A_CRUISE_MAX_V
 from selfdrive.car.interfaces import CarInterfaceBase
+
+EventName = car.CarEvent.EventName
 
 A_ACC_MAX = max(_A_CRUISE_MAX_V)
 AudibleAlert = car.CarControl.HUDControl.AudibleAlert
@@ -383,7 +385,7 @@ class CarInterface(CarInterfaceBase):
         ret.buttonEvents = buttonEvents
 
         # events
-        events = []
+        events = Events()
 
         # notification messages for DAS
         if (not c.enabled) and (self.CC.opState == 2):
@@ -550,7 +552,7 @@ class CarInterface(CarInterfaceBase):
             else:
                 events.add(EventName.buttonEnable)
 
-        ret.events = events
+        ret.events = events.to_msg()
         ret.canMonoTimes = canMonoTimes
 
         # update previous brake/gas pressed

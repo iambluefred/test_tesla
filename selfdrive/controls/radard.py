@@ -205,7 +205,12 @@ def radard_thread(sm=None, pm=None, can_sock=None):
 
   while 1:
     can_strings = messaging.drain_sock_raw(can_sock, wait_for_one=True)
-    rr = RI.update(can_strings)
+    # This looks like a useless tesla hack. See if it can be removed?
+    print('Car name: {}'.format(CP.carName))
+    if CP.carName == "tesla":
+      rr, rrext, ahbCarDetected = RI.update(can_strings, v_ego=0)
+    else:
+      rr = RI.update(can_strings)
 
     if rr is None:
       continue
