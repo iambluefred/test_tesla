@@ -1,6 +1,5 @@
 from common.numpy_fast import interp
 import numpy as np
-from selfdrive.car.modules.ALCA_module import ALCAModelParser
 from cereal import log
 
 CAMERA_OFFSET = 0.06  # m from center car to camera
@@ -47,7 +46,7 @@ def calc_d_poly(l_poly, r_poly, p_poly, l_prob, r_prob, lane_width, v_ego):
 
 
 class LanePlanner():
-  def __init__(self, shouldUseAlca):
+  def __init__(self):
     self.l_poly = [0., 0., 0., 0.]
     self.r_poly = [0., 0., 0., 0.]
     self.p_poly = [0., 0., 0., 0.]
@@ -65,9 +64,6 @@ class LanePlanner():
 
     self._path_pinv = compute_path_pinv()
     self.x_points = np.arange(50)
-    self.shouldUseAlca = shouldUseAlca
-    if shouldUseAlca:
-      self.ALCAMP = ALCAModelParser()
 
   def parse_model(self, md):
     if len(md.leftLane.poly):
@@ -85,7 +81,7 @@ class LanePlanner():
       self.l_lane_change_prob = md.meta.desireState[log.PathPlan.Desire.laneChangeLeft - 1]
       self.r_lane_change_prob = md.meta.desireState[log.PathPlan.Desire.laneChangeRight - 1]
 
-  def update_d_poly(self, v_ego, md, alca):
+  def update_d_poly(self, v_ego):
     # only offset left and right lane lines; offsetting p_poly does not make sense
     self.l_poly[3] += CAMERA_OFFSET
     self.r_poly[3] += CAMERA_OFFSET
@@ -98,12 +94,8 @@ class LanePlanner():
     self.lane_width = self.lane_width_certainty * self.lane_width_estimate + \
                       (1 - self.lane_width_certainty) * speed_lane_width
 
-    # ALCA integration
-    if self.shouldUseAlca and alca:
-      self.r_poly,self.l_poly,self.r_prob,self.l_prob,self.lane_width, self.p_poly = self.ALCAMP.update(v_ego, md, np.array(self.r_poly), np.array(self.l_poly), self.r_prob, self.l_prob, self.lane_width, self.p_poly)
+    self.d_poly = calc_d_poly(self.l_poly, self.r_poly, self.p_poly, self.l_prob, self.r_prob, self.lane_width, v_ego)
 
-    self.d_poly = calc_d_poly(self.l_poly, self.r_poly, self.p_poly, self.l_prob, self.r_prob, self.lane_width,v_ego)
-
-  def update(self, v_ego, md, alca):
+  def update(self, v_ego, md):
     self.parse_model(md)
-    self.update_d_poly(v_ego, md, alca)
+    self.update_d_poly(v_ego)

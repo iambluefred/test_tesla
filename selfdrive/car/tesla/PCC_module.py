@@ -438,7 +438,7 @@ class PCCController:
                 and self.lead_1.aLeadK > 0.0
             )
         accel_limits = [
-            float(x) for x in calc_cruise_accel_limits(v_ego, following, is_tesla=True)
+            float(x) for x in calc_cruise_accel_limits(v_ego, following)
         ]
 
         accel_limits[1] *= _accel_limit_multiplier(CS, self.lead_1)
@@ -458,7 +458,9 @@ class PCCController:
         # once the speed is detected we have to use our own PID to determine
         # how much accel and break we have to do
         ####################################################################
-        if PCCModes.is_selected(FollowMode(), CS.cstm_btns):
+        # Broken in 0.7.9
+        #if PCCModes.is_selected(FollowMode(), CS.cstm_btns):
+        if False:
             MPC_BRAKE_MULTIPLIER = 6.0
             enabled = self.enable_pedal_cruise and self.LoC.long_control_state in [
                 LongCtrlState.pid,
@@ -530,10 +532,11 @@ class PCCController:
                 # feedforward = self.last_output_gb
                 t_go, t_brake = self.LoC.update(
                     self.enable_pedal_cruise,
-                    CS.v_ego,
-                    CS.brake_pressed != 0,
-                    CS.standstill,
-                    False,
+                    # randomly disabling stuff during 0.7.9 merge to prevent runtime crashes
+                    #CS.v_ego,
+                    #CS.brake_pressed != 0,
+                    #CS.standstill,
+                    #False,
                     self.v_cruise,
                     vTarget,
                     self.vTargetFuture,
@@ -566,7 +569,8 @@ class PCCController:
         #
         # we use the values from actuators.gas and actuators.brake
         ##############################################################
-        elif PCCModes.is_selected(OpMode(), CS.cstm_btns):
+        #elif PCCModes.is_selected(OpMode(), CS.cstm_btns):
+        else:
             output_gb = actuators.gas - actuators.brake
             self.v_pid = pcm_speed
             MPC_BRAKE_MULTIPLIER = 12.0

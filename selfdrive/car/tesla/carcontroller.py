@@ -274,6 +274,8 @@ class CarController:
         leftLaneVisible,
         rightLaneVisible,
     ):
+        if frame % 33 == 0:
+          print("\t\tactuators.steerAngle: {:.1f} actuators.steer: {:.1f}".format(actuators.steerAngle, actuators.steer))
 
         if (not enabled) and (self.ALCA.laneChange_cancelled):
             self.ALCA.laneChange_cancelled = False

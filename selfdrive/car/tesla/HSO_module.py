@@ -1,5 +1,6 @@
 # human steer override module
 
+import math
 
 class HSOController:
     def __init__(self, carcontroller):
@@ -22,6 +23,9 @@ class HSOController:
                     CC.blinker.blinker_on_frame_start + int(100 * CS.hsoNumbPeriod)
                 ):  # stalk locked or blinker within numbPeriod
                     self.frame_humanSteered = frame
+                elif not actuators or actuators.steerAngle is None or math.isnan(actuators.steerAngle):
+                #    print("Unexpected invalid actuator steerAngle. Skipping human steering check.")
+                    pass
                 elif (
                     frame - self.frame_humanSteered < 50
                 ):  # Need more human testing of handoff timing

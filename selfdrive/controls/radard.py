@@ -59,7 +59,7 @@ def match_vision_to_cluster(v_ego, lead, clusters):
     return None
 
 
-def get_lead(v_ego, ready, clusters, lead_msg, low_speed_override=True, use_tesla_radar=False):
+def get_lead(v_ego, ready, clusters, lead_msg, low_speed_override=True):
   # Determine leads, this is where the essential logic happens
   if len(clusters) > 0 and ready and lead_msg.prob > .5:
     cluster = match_vision_to_cluster(v_ego, lead_msg, clusters)
@@ -70,7 +70,7 @@ def get_lead(v_ego, ready, clusters, lead_msg, low_speed_override=True, use_tesl
   if cluster is not None:
     lead_dict = cluster.get_RadarState(lead_msg.prob)
   elif (cluster is None) and ready and (lead_msg.prob > .5):
-    lead_dict = Cluster(use_tesla_radar).get_RadarState_from_vision(lead_msg, v_ego)
+    lead_dict = Cluster().get_RadarState_from_vision(lead_msg, v_ego)
 
   if low_speed_override:
     low_speed_clusters = [c for c in clusters if c.potential_low_speed_lead(v_ego)]
@@ -206,7 +206,6 @@ def radard_thread(sm=None, pm=None, can_sock=None):
   while 1:
     can_strings = messaging.drain_sock_raw(can_sock, wait_for_one=True)
     # This looks like a useless tesla hack. See if it can be removed?
-    print('Car name: {}'.format(CP.carName))
     if CP.carName == "tesla":
       rr, rrext, ahbCarDetected = RI.update(can_strings, v_ego=0)
     else:

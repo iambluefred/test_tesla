@@ -520,7 +520,7 @@ class CarInterface(CarInterfaceBase):
                 )
                 > 0.2
                 and ret.cruiseState.enabled
-            ) or (enable_pressed and get_events(events, [ET.NO_ENTRY])):
+            ) or (enable_pressed and events.any(ET.NO_ENTRY)):
                 if ret.seatbeltUnlatched:
                     self.CC.DAS_211_accNoSeatBelt = 1
                     self.CC.warningCounter = 300

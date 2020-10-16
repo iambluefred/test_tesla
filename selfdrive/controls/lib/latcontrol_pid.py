@@ -47,9 +47,4 @@ class LatControlPID():
       pid_log.output = output_steer
       pid_log.saturated = bool(self.pid.saturated)
 
-    
-    # we only deal with Tesla, so we return two angles, no torque info
-    if CP.carName == "tesla":
-      return float(self.angle_steers_des), path_plan.angleSteers, pid_log
-    else:
-      return output_steer, float(self.angle_steers_des), pid_log
+    return output_steer, float(self.angle_steers_des), pid_log
