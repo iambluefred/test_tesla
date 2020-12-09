@@ -348,13 +348,17 @@ class CarController():
 
     self.blinker.update_state(CS, frame)
 
-    # update PCC module info
-    pedal_can_sends = self.PCC.update_stat(CS, frame)
-    if self.PCC.pcc_available:
-      self.ACC.enable_adaptive_cruise = False
+    # update ACC/PCC module info if not AP hardware
+    if CS.real_dasHw == 0:
+      pedal_can_sends = self.PCC.update_stat(CS, frame)
+      if self.PCC.pcc_available:
+        self.ACC.enable_adaptive_cruise = False
+      else:
+        # Update ACC module info.
+        self.ACC.update_stat(CS, True)
+        self.PCC.enable_pedal_cruise = False
     else:
-      # Update ACC module info.
-      self.ACC.update_stat(CS, True)
+      self.ACC.enable_adaptive_cruise = False
       self.PCC.enable_pedal_cruise = False
 
     # update CS.v_cruise_pcm based on module selected.
