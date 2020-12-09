@@ -1173,9 +1173,12 @@ static int tesla_rx_hook(CAN_FIFOMailBox_TypeDef *to_push)
     { // pull forward
       // activate openpilot
       // TODO: uncomment the if to use double pull to activate
-      //if (current_car_time <= time_at_last_stalk_pull + 1 && current_car_time != -1 && time_at_last_stalk_pull != -1) {
-      controls_allowed = 1;
-      //}
+      //BB Double pull when in AP1 car will disable the OP and enable AP1
+      if ((AP_hardware_detected == 1) && (current_car_time <= time_at_last_stalk_pull + 1 && current_car_time != -1 && time_at_last_stalk_pull != -1)) {
+        controls_allowed = 0;
+      } else {
+        controls_allowed = 1;
+      }
       time_at_last_stalk_pull = current_car_time;
     }
     else if (ap_lever_position == 1)
