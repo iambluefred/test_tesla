@@ -2046,7 +2046,7 @@ static int tesla_fwd_hook(int bus_num, CAN_FIFOMailBox_TypeDef *to_fwd)
       }
       MLB = MLB + (b4 << 24);
       MHB = 0x8000 + b5 + (counter << 20) + (lcw << 16);
-      cksm = add_tesla_cksm2(MLB, MHB, 0x389, 7);
+      int cksm = add_tesla_cksm2(MLB, MHB, 0x389, 7);
       MHB = MHB + (cksm << 24);
       to_fwd->RDHR = MHB;
       to_fwd->RDLR = MLB;
