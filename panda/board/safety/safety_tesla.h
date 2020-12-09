@@ -949,7 +949,7 @@ static void do_fake_DAS(uint32_t RIR, uint32_t RDTR) {
 }
 
 static void do_EPB_epasControl(uint32_t RIR, uint32_t RDTR) {
-  if (AP_hardware_detected > 0) {
+  if ((AP_hardware_detected > 0) || (DAS_gtwConfigReceived == 0))  {
     return;
   }
   uint32_t MLB;
@@ -967,7 +967,7 @@ static void do_EPB_epasControl(uint32_t RIR, uint32_t RDTR) {
 
 static void do_fake_stalk_cancel(uint32_t RIR, uint32_t RDTR) {
   //BBTODO: see if we need cancel at all for AP1
-  if (AP_hardware_detected > 0) {
+  if ((AP_hardware_detected > 0) || (DAS_gtwConfigReceived == 0))  {
     return;
   }
   uint32_t MLB;
@@ -1243,8 +1243,7 @@ static int tesla_rx_hook(CAN_FIFOMailBox_TypeDef *to_push)
     }
   }
   //get latest steering wheel angle
-  if ((addr == 0x00E)  && (bus_number == 0))
-  {
+  if ((addr == 0x00E)  && (bus_number == 0))  {
     int angle_meas_now = (int)(((((GET_BYTE(to_push, 0) & 0x3F) << 8) + GET_BYTE(to_push, 1)) * 0.1) - 819.2);
     //uint32_t ts = TIM2->CNT;
     uint32_t ts_elapsed = get_ts_elapsed(ts, tesla_ts_angle_last);
@@ -1427,7 +1426,7 @@ static int tesla_tx_hook(CAN_FIFOMailBox_TypeDef *to_send)
     DAS_202_noisyEnvironment = ((b0 >> 2) & 0x01);
     DAS_doorOpen = ((b0 >> 1) & 0x01);
     DAS_notInDrive = ((b0 >> 0) & 0x01);
-    if (AP_hardware_detected == 0) {
+    if ((AP_hardware_detected == 0) && (DAS_gtwConfigReceived == 1))  {
       enable_das_emulation = ((b0 >> 5) & 0x01);
       enable_radar_emulation = ((b0 >> 6) & 0x01);
     }
@@ -1442,7 +1441,7 @@ static int tesla_tx_hook(CAN_FIFOMailBox_TypeDef *to_send)
     DAS_025_steeringOverride = ((b1 >> 7) & 0x01);
     DAS_ldwStatus = (b2 & 0x07);
     //FLAG NOT USED = ((b2 >> 3) & 0x01);
-    if (AP_hardware_detected == 0) {
+    if ((AP_hardware_detected == 0) && (DAS_gtwConfigReceived == 1)) {
       DAS_noEpasHarness = ((b2 >> 4) & 0x01);
       DAS_usesApillarHarness = ((b2 >> 5) & 0x01);
       if (DAS_noEpasHarness == 1) {
@@ -1577,7 +1576,7 @@ static uint32_t radar_VIN_char(int pos, int shift) {
 
 
 static void tesla_fwd_to_radar_modded(uint8_t bus_num, CAN_FIFOMailBox_TypeDef *to_fwd) {
-  if (AP_hardware_detected > 0) {
+  if ((AP_hardware_detected > 0) || (DAS_gtwConfigReceived == 0)) {
     return;
   }
   if ((enable_radar_emulation == 0) || (tesla_radar_vin_complete !=7) || (tesla_radar_should_send==0) ) {
@@ -1894,7 +1893,7 @@ static int tesla_fwd_hook(int bus_num, CAN_FIFOMailBox_TypeDef *to_fwd)
   //now let's deal with CAN1 - Radar
   if (bus_num == tesla_radar_can) {
     //if AP1 do not forward anything!
-    if (AP_hardware_detected == 1) {
+    if ((AP_hardware_detected > 0) || (DAS_gtwConfigReceived == 0)) {
       return -1;
     }
     //send radar 0x531 and 0x651 from Radar CAN to CAN0
