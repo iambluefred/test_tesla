@@ -60,21 +60,6 @@ int current_car_time = -1;
 int time_at_last_stalk_pull = -1;
 int eac_status = 0;
 
-/* <-- revB giraffe GPIO */
-/*
-#include "../drivers/uja1023.h"
-
-uint32_t tesla_ts_brakelight_on_last = 0;
-const uint32_t BRAKELIGHT_CLEAR_INTERVAL = 250000; //25ms; needs to be slower than the framerate difference between the DI_torque2 (~100Hz) and DI_state messages (~10hz).
-const uint32_t STW_MENU_BTN_HOLD_INTERVAL = 750000; //75ms, how long before we recognize the user is  holding this steering wheel button down
-
-uint32_t stw_menu_btn_pressed_ts = 0;
-int stw_menu_current_output_state = 0;
-int stw_menu_btn_state_last = 0;
-int stw_menu_output_flag = 0;
-int high_beam_lever_state = 0;
-*/
-/* revB giraffe GPIO --> */
 
 int tesla_radar_status = 0; //0-not present, 1-initializing, 2-active
 uint32_t tesla_last_radar_signal = 0;
@@ -244,6 +229,9 @@ int DAS_plain_cc_enabled = 0x00;
 //fake DAS - emergency brakes use
 int DAS_emergency_brake_request = 0x00;
 int DAS_fleet_speed_state = 0x00;
+
+//for AP1 integration
+int AP_hardware_detected = 0;
 
 
 static int add_tesla_crc(uint32_t MLB, uint32_t MHB , int msg_len) {
@@ -416,24 +404,16 @@ static void reset_DAS_data(void) {
 
 
 static void do_fake_DAS(uint32_t RIR, uint32_t RDTR) {
+  
+  //if AP1 don't do fake DAS
+  if (AP_hardware_detected > 0) {
+    return;
+  }
 
   fake_DAS_counter++;
   fake_DAS_counter = fake_DAS_counter % 300;
   uint32_t MLB = 0;
   uint32_t MHB = 0;
-
-  //check if we got data from OP in the last two seconds
-  if (current_car_time - time_last_DAS_data > 2)  {
-    //no message in the last 2 seconds, reset all variables
-    //BB_no_harness: why are we resetting here.... maybe it should be only when disconnecting or not at all
-    //reset_DAS_data();
-    if (EON_is_connected == 1) {
-      reset_DAS_data();
-      EON_is_connected  = 0;
-    }
-  } else {
-    EON_is_connected = 1;
-  }
 
   //ldw type of warning... use haptic if we manually steer
   if (DAS_ldwStatus > 0) {
@@ -969,6 +949,9 @@ static void do_fake_DAS(uint32_t RIR, uint32_t RDTR) {
 }
 
 static void do_EPB_epasControl(uint32_t RIR, uint32_t RDTR) {
+  if (AP_hardware_detected > 0) {
+    return;
+  }
   uint32_t MLB;
   uint32_t MHB; 
   MLB = 0x01 + (EPB_epasControl_idx << 8); 
@@ -983,6 +966,10 @@ static void do_EPB_epasControl(uint32_t RIR, uint32_t RDTR) {
 }
 
 static void do_fake_stalk_cancel(uint32_t RIR, uint32_t RDTR) {
+  //BBTODO: see if we need cancel at all for AP1
+  if (AP_hardware_detected > 0) {
+    return;
+  }
   uint32_t MLB;
   uint32_t MHB; 
   if ((DAS_lastStalkL == 0x00) && (DAS_lastStalkH == 0x00)) {
@@ -1051,10 +1038,12 @@ static int tesla_rx_hook(CAN_FIFOMailBox_TypeDef *to_push)
       int radhw = ((to_push->RDLR >> 10) & 0x03);
       if (dashw == 1) {
         DAS_noEpasHarness = 1;
-        enable_das_emulation = 1;
+        enable_das_emulation = 0;
+        AP_hardware_detected = 1;
+        enable_radar_emulation = 0;
       } 
       if (radhw > 0) {
-        enable_radar_emulation = 1;
+        enable_radar_emulation = 0;
       }
     }
   }
@@ -1069,7 +1058,20 @@ static int tesla_rx_hook(CAN_FIFOMailBox_TypeDef *to_push)
 
   //we use 0x108 at 100Hz to detect timing of messages sent by our fake DAS and EPB
   if ((addr == 0x108)  && (bus_number == 0)) {
+    
     if (DAS_gtwConfigReceived == 1) {
+      //check if we got data from OP in the last two seconds
+      if (current_car_time - time_last_DAS_data > 2)  {
+        //no message in the last 2 seconds, reset all variables
+        //BB_no_harness: why are we resetting here.... maybe it should be only when disconnecting or not at all
+        //reset_DAS_data();
+        if (EON_is_connected == 1) {
+          reset_DAS_data();
+          EON_is_connected  = 0;
+        }
+      } else {
+        EON_is_connected = 1;
+      }
       if ((fake_DAS_counter % 10 == 5) && (DAS_noEpasHarness == 0)) {
         do_EPB_epasControl(to_push->RIR,to_push->RDTR);
       }
@@ -1185,72 +1187,6 @@ static int tesla_rx_hook(CAN_FIFOMailBox_TypeDef *to_push)
     if ((DAS_usingPedal == 1) && (ap_lever_position > 1)) {
       do_fake_stalk_cancel(to_push->RIR, to_push->RDTR);
     }
-    /* <-- revB giraffe GPIO */
-    /*
-    int turn_signal_lever = (to_push->RDLR >> 16) & 0x3; //TurnIndLvr_Stat : 16|2@1+
-    int stw_menu_button = (to_push->RDHR >> 5) & 0x1; //StW_Sw05_Psd : 37|1@1+
-    high_beam_lever_state = (to_push->RDLR >> 18) & 0x3; //SG_ HiBmLvr_Stat : 18|2@1+
-    
-    //TurnIndLvr_Stat 3 "SNA" 2 "RIGHT" 1 "LEFT" 0 "IDLE" ;
-    if (turn_signal_lever == 1)
-    {
-      //Left turn signal is on, turn on output pin 3
-      set_uja1023_output_bits(1 << 3);
-      //puts(" Left turn on!\n");
-    }
-    else
-    {
-      clear_uja1023_output_bits(1 << 3);
-    }
-    if (turn_signal_lever == 2)
-    {
-      //Right turn signal is on, turn on output pin 4
-      set_uja1023_output_bits(1 << 4);
-      //puts(" Right turn on!\n");
-    }
-    else
-    {
-      clear_uja1023_output_bits(1 << 4);
-    }
-    
-    if (stw_menu_button == 1)
-    {
-      //menu button is pushed, if it wasn't last time, set the initial timestamp
-      if (stw_menu_btn_state_last == 0)
-      {
-        stw_menu_btn_state_last = 1;
-        stw_menu_btn_pressed_ts = ts;  
-      }
-      else
-      {
-        uint32_t stw_ts_elapsed = get_ts_elapsed(ts, stw_menu_btn_pressed_ts);
-        if (stw_ts_elapsed > STW_MENU_BTN_HOLD_INTERVAL)
-        {
-          //user held the button, do stuff!
-          if (stw_menu_current_output_state == 0 && stw_menu_output_flag == 0)
-          {
-            stw_menu_output_flag = 1;
-            stw_menu_current_output_state = 1;
-            //set_uja1023_output_bits(1 << 5);
-            //puts("Menu Button held, setting output 5 HIGH\n");
-          }
-          else if (stw_menu_current_output_state == 1 && stw_menu_output_flag == 0)
-          {
-            stw_menu_output_flag = 1;
-            stw_menu_current_output_state = 0;
-            //clear_uja1023_output_bits(1 << 5);
-            //puts("Menu Button held, setting output 5 LOW\n");
-          }
-        } //held
-      }
-    } //stw menu button pressed
-    else if (stw_menu_button == 0)
-    {
-      stw_menu_output_flag = 0;
-      stw_menu_btn_state_last = 0;
-    }
-    */
-    /* revB giraffe GPIO --> */
   }
 
   // Detect drive rail on (ignition) (start recording)
@@ -1265,83 +1201,6 @@ static int tesla_rx_hook(CAN_FIFOMailBox_TypeDef *to_push)
     } 
   }
 
-
-  // exit controls on brake press
-  // DI_torque2::DI_brakePedal 0x118
-
-  /* revB giraffe GPIO --> */
-  /*
-  if ((addr == 0x118)  && (bus_number == 0))
-  {
-    int drive_state = (to_push->RDLR >> 12) & 0x7; //DI_gear : 12|3@1+
-    int brake_pressed = (to_push->RDLR & 0x8000) >> 15;
-    int tesla_speed_mph = (((((GET_BYTE(to_push, 3) & 0xF) << 8) + GET_BYTE(to_push, 2)) * 0.05) - 25);
-    
-
-    
-    //if the car goes into reverse, set UJA1023 output pin 5 to high. If Drive, set pin 1 high
-    //DI_gear 7 "DI_GEAR_SNA" 4 "DI_GEAR_D" 3 "DI_GEAR_N" 2 "DI_GEAR_R" 1 "DI_GEAR_P" 0 "DI_GEAR_INVALID" ;
-    //UJA1023 pin0 is our output to the camera switcher
-
-    if (drive_state == 2)
-    {
-      //reverse_state = 1;
-      set_uja1023_output_bits(1 << 5);
-      
-      //if we're in reverse, we always want the rear camera up:
-      set_uja1023_output_bits(1 << 0); //show rear camera
-      //puts(" Got Reverse\n");
-      
-    }
-    else
-    {
-      //reverse_state = 0;
-      clear_uja1023_output_bits(1 << 5);
-      
-      //if we're in not in reverse and button state is 0, set output low (show front camera)
-      if (stw_menu_current_output_state == 0)
-      {
-        clear_uja1023_output_bits(1 << 0); //show front camera
-      }
-      
-      //if we're not in reverse and button state is 1, set the output high (show the rear camera)
-      else
-      {
-        set_uja1023_output_bits(1 << 0); //show rear camera
-      } 
-    }
-    
-    if (drive_state == 4)
-    {
-      set_uja1023_output_bits(1 << 1);
-      //puts(" Got Drive\n");
-    }
-    else
-    {
-      clear_uja1023_output_bits(1 << 1);
-    }
-
-    if (brake_pressed == 1)
-    {
-      //disable break cancel by commenting line below
-      //controls_allowed = 0;
-    
-      set_uja1023_output_bits(1 << 2);
-      //puts(" Brake on!\n");
-      tesla_ts_brakelight_on_last = ts;
-    }
-    else
-    {
-      uint32_t ts_elapsed = get_ts_elapsed(ts, tesla_ts_brakelight_on_last);
-      if (ts_elapsed > BRAKELIGHT_CLEAR_INTERVAL)
-      {
-        clear_uja1023_output_bits(1 << 2);
-        //puts(" Brakelight off!\n");
-      } 
-    }
-  }
-  */
-    /* revB giraffe GPIO --> */
   if ((addr == 0x118)  && (bus_number == 0))
   {
     int tesla_speed_mph = (((((GET_BYTE(to_push, 3) & 0xF) << 8) + GET_BYTE(to_push, 2)) * 0.05) - 25);
@@ -1419,55 +1278,6 @@ static int tesla_rx_hook(CAN_FIFOMailBox_TypeDef *to_push)
     tesla_controls_allowed_last = controls_allowed;
   }
   
-    /* <-- revB giraffe GPIO */
-  /*
-  //BO_ 1001 DAS_bodyControls: 8 XXX
-  if ((addr == 0x3e9)  && (bus_number == 0)) {
-    int high_beam_decision = (to_push->RDLR >> 10) & 0x3; //DAS_highLowBeamDecision : 10|2@1+
-    // highLowBeamDecision:
-    //0: Undecided (Car off)
-    //1: Off
-    //2: On
-    //3: Auto High Beam is disabled
-    //VAL_ 69 HiBmLvr_Stat 3 "SNA" 2 "HIBM_FLSH_ON_PSD" 1 "HIBM_ON_PSD" 0 "IDLE" ;
-
-    //If the lever is in either high beam position and auto high beam is off or indicates highs should be on
-    if ((high_beam_decision == 3 && (high_beam_lever_state == 2 || high_beam_lever_state == 1))
-    || (high_beam_decision == 2 && (high_beam_lever_state == 2 || high_beam_lever_state == 1)))
-    {
-      //high beams are on. Set the output 6 high
-      set_uja1023_output_bits(1 << 6);
-      //puts("High Beam on!\n");
-    } //high beams on!
-    else
-    {
-      //high beams are off. Set the output 6 low
-      clear_uja1023_output_bits(1 << 6);
-      //puts("High Beam off!\n");
-    } //high beams off
-  } //DAS_bodyControls
-  
-  //BO_ 872 DI_state: 8 DI
-  if ((addr == 0x368)  && (bus_number == 0)) {
-    int regen_brake_light = (to_push->RDLR >> 8) & 0x1; //DI_regenLight : 8|1@1+
-    //if the car's brake lights are on, set pin 2 to high
-    if (regen_brake_light == 1)
-    {
-      set_uja1023_output_bits(1 << 2);
-      //puts(" Regen Brake Light on!\n");
-      tesla_ts_brakelight_on_last = ts;
-    }
-    else
-    {
-      uint32_t ts_elapsed = get_ts_elapsed(ts, tesla_ts_brakelight_on_last);
-      if (ts_elapsed > BRAKELIGHT_CLEAR_INTERVAL)
-      {
-        clear_uja1023_output_bits(1 << 2);
-        //puts(" Brakelight off!\n");
-      }
-    }
-  }*/
-  /* revB giraffe GPIO --> */
   return valid;
 }
 
@@ -1614,8 +1424,10 @@ static int tesla_tx_hook(CAN_FIFOMailBox_TypeDef *to_send)
     DAS_202_noisyEnvironment = ((b0 >> 2) & 0x01);
     DAS_doorOpen = ((b0 >> 1) & 0x01);
     DAS_notInDrive = ((b0 >> 0) & 0x01);
-    enable_das_emulation = ((b0 >> 5) & 0x01);
-    enable_radar_emulation = ((b0 >> 6) & 0x01);
+    if (AP_hardware_detected == 0) {
+      enable_das_emulation = ((b0 >> 5) & 0x01);
+      enable_radar_emulation = ((b0 >> 6) & 0x01);
+    }
     stopLightWarning = ((b0 >> 7) & 0x01);
     stopSignWarning = ((b1 >> 0) & 0x01);
     DAS_222_accCameraBlind = ((b1 >> 1) & 0x01); //we will not override the one set in 0x553
@@ -1627,18 +1439,25 @@ static int tesla_tx_hook(CAN_FIFOMailBox_TypeDef *to_send)
     DAS_025_steeringOverride = ((b1 >> 7) & 0x01);
     DAS_ldwStatus = (b2 & 0x07);
     //FLAG NOT USED = ((b2 >> 3) & 0x01);
-    DAS_noEpasHarness = ((b2 >> 4) & 0x01);
-    DAS_usesApillarHarness = ((b2 >> 5) & 0x01);
-    if (DAS_noEpasHarness == 1) {
-      tesla_epas_can = 0;
+    if (AP_hardware_detected == 0) {
+      DAS_noEpasHarness = ((b2 >> 4) & 0x01);
+      DAS_usesApillarHarness = ((b2 >> 5) & 0x01);
+      if (DAS_noEpasHarness == 1) {
+        tesla_epas_can = 0;
+      } else {
+        tesla_epas_can = 2;
+      }
     } else {
-      tesla_epas_can = 2;
+      tesla_epas_can = 0;
     }
     return false;
   }
 
   //capture message for AHB and parse 
   if (addr == 0x65A) {
+    if (AP_hardware_detected > 0) {
+      return false;
+    }
     int b0 = (to_send->RDLR & 0xFF);
     int b1 = ((to_send->RDLR >> 8) & 0xFF);
     int b2 = ((to_send->RDLR >> 16) & 0xFF);
@@ -1730,11 +1549,13 @@ static void tesla_init(int16_t param)
   if (DAS_noEpasHarness == 0) {
     gmlan_switch_init(1); //init the gmlan switch with 1s timeout enabled
   }
-  //uja1023_init();
 }
 
 
 static void tesla_fwd_to_radar_as_is(uint8_t bus_num, CAN_FIFOMailBox_TypeDef *to_fwd) {
+  if (AP_hardware_detected > 0) {
+    return;
+  }
   if ((enable_radar_emulation == 0) || (tesla_radar_vin_complete !=7) || (tesla_radar_should_send==0) ) {
     return;
   }
@@ -1753,6 +1574,9 @@ static uint32_t radar_VIN_char(int pos, int shift) {
 
 
 static void tesla_fwd_to_radar_modded(uint8_t bus_num, CAN_FIFOMailBox_TypeDef *to_fwd) {
+  if (AP_hardware_detected > 0) {
+    return;
+  }
   if ((enable_radar_emulation == 0) || (tesla_radar_vin_complete !=7) || (tesla_radar_should_send==0) ) {
     return;
   }
@@ -1980,7 +1804,7 @@ static int tesla_fwd_hook(int bus_num, CAN_FIFOMailBox_TypeDef *to_fwd)
   }
 
   //first let's deal with the messages we need to send to radar
-  if ((bus_num == 0) || ((bus_num == 2 ) && (DAS_usesApillarHarness == 1)))
+  if (((bus_num == 0) || ((bus_num == 2 ) && (DAS_usesApillarHarness == 1))) && (AP_hardware_detected == 0))
   {
     
     //compute return value; do not forward 0->2 and 2->0 if no epas harness
@@ -2021,9 +1845,21 @@ static int tesla_fwd_hook(int bus_num, CAN_FIFOMailBox_TypeDef *to_fwd)
       return ret_val;
     }
     
-  }   
+  } 
+
   //now let's deal with CAN0 alone
   if (bus_num == 0) {
+
+    if (AP_hardware_detected == 1) {
+      //if no EON just forward everything as is
+      if (EON_is_connected == 0) {
+        return 2;
+      }
+      //BBTODO: we have to figure out what we do with stalk pulls...
+      //for now we use single pull for using Tesla long and AP1 lat so 
+      //no need to cancel stalk pull
+      return 2;
+    }
 
     if (DAS_noEpasHarness == 0) {
       ret_val=2;
@@ -2054,6 +1890,10 @@ static int tesla_fwd_hook(int bus_num, CAN_FIFOMailBox_TypeDef *to_fwd)
 
   //now let's deal with CAN1 - Radar
   if (bus_num == tesla_radar_can) {
+    //if AP1 do not forward anything!
+    if (AP_hardware_detected == 1) {
+      return -1;
+    }
     //send radar 0x531 and 0x651 from Radar CAN to CAN0
     if ((addr == 0x531) || (addr == 0x651)){ 
       return 0;
@@ -2063,7 +1903,7 @@ static int tesla_fwd_hook(int bus_num, CAN_FIFOMailBox_TypeDef *to_fwd)
     return -1;
   }
 
-  //now let's deal with CAN2 
+  //now let's deal with CAN2 non AP1 (EPAS messages)
   if ((bus_num == tesla_epas_can) && (bus_num > 0))
   {
 
@@ -2073,6 +1913,183 @@ static int tesla_fwd_hook(int bus_num, CAN_FIFOMailBox_TypeDef *to_fwd)
     }
 
     //forward everything else to CAN 0 unless claiming no harness
+    return 0;
+  }
+
+  //now let's deal with CAN2 for AP1 (DAS messages)
+  if ((bus_num == 2) && (AP_hardware_detected == 1)) {
+    //let's now modify the AP1 messages
+    //if NO EON present, just forward, we use AP1
+    if (EON_is_connected == 0) {
+      return 0;
+    }
+    //if OP is not engaged, just forward as is
+
+    //if OP is engaged, then modify some messages
+    //we want to modify the following messages
+    //DAS_bodyControls (0x3E9)
+    if (addr == 0x3E9)
+    {
+      to_fwd->RDHR = to_fwd->RDHR & 0x00FFFFFF;
+      int reason = 0;
+      //BBTODO check if reason is needed
+      if (DAS_turn_signal_request !=0) {
+        reason = 0x01;
+      }
+      to_fwd->RDLR = (to_fwd->RDLR & 0xFFF0FCFF) | (DAS_turn_signal_request <<8) | (reason << 16);
+      //int cksm = 0xEC;
+      //cksm = (cksm + (to_fwd->RDLR & 0xFF) + ((to_fwd->RDLR >> 8) & 0xFF) + ((to_fwd->RDLR >> 16) & 0xFF) + ((to_fwd->RDLR >> 24) & 0xFF)) & 0xFF;
+      //cksm = (cksm + (to_fwd->RDHR & 0xFF) + ((to_fwd->RDHR >> 8) & 0xFF) + ((to_fwd->RDHR >> 16) & 0xFF) + ((to_fwd->RDHR >> 24) & 0xFF)) & 0xFF;
+      int cksm = add_tesla_cksm2(to_fwd->RDLR, to_fwd->RDHR, 0x3E9, 7);
+      to_fwd->RDHR = to_fwd->RDHR | (cksm << 24);
+      return 0;
+    }
+    //DAS_integratedSafetyFront (0x299) for FCW?
+    if (addr == 0x299) {
+      //not modifying for now
+      return 0;
+    }
+    //DAS_lanes (0x239)
+    if (addr == 0x239) {
+      int fuse = 2;
+      int counter = (to_fwd->RDHR >> 28) & 0x0F;
+      to_fwd->RDLR = (lWidth << 4) + (rLine << 1) + lLine + (laneRange << 8) + (curvC0 << 16) + (curvC1  << 24);
+      to_fwd->RDHR = 0x00F00000 + (counter << 28) + curvC2 + (curvC3 << 8) + ((((rLine * fuse) << 2) + (lLine * fuse)) << 16); //0x0F000000
+      return 0;
+    }
+
+    //DAS_control(0x2B9)
+    if (addr == 0x2B9) {
+      //modify only when we do long Control from OP
+      if (DAS_longC_enabled == 0) {
+        return 0;
+      }
+      uint32_t MLB;
+      uint32_t MHB;
+      int counter = (to_fwd->RDHR >> 21) & 0x07;
+      int acc_speed_kph = 0xFFF;
+      int acc_state = 0x04;
+      int aeb_event = 0x00;
+      int jerk_min = 0x000;
+      int jerk_max = 0x0F;
+      int accel_min = (int)((DAS_accel_min + 15 ) / 0.04);
+      int accel_max = (int)((DAS_accel_max + 15 ) / 0.04);
+      float uom = 1;
+      if ((DAS_uom == 0) && (DAS_units_included == 0)) {
+        uom = 1.609;
+      }
+      acc_speed_kph = (int)(DAS_acc_speed_limit * uom * 10.0);
+      MLB = (0xff & acc_speed_kph) + 
+        (((acc_state << 4) + ((acc_speed_kph & 0xF00) >> 8)) << 8) +
+        ((((jerk_min << 2) & 0xFF) + aeb_event) << 16 ) +
+        ((((jerk_max << 3) & 0xFF) +((jerk_min >> 6) & 0x07)) << 24);
+      MHB = ((((accel_min << 3) & 0xFF) + ((jerk_max >> 5) & 0x07)) ) +
+        ((((accel_max << 4) & 0xFF) + ((accel_min >> 5) & 0x0F)) << 8) +
+        (((counter << 5) + ((accel_max >> 4) & 0x1F))<< 16);
+      int cksm = add_tesla_cksm2(MLB, MHB, 0x2B9, 7);
+      MHB = MHB + (cksm << 24);
+      to_fwd->RDLR = MLB;
+      to_fwd->RDHR = MHB;
+      return 0;
+    }
+
+    //DAS_status (0x399)
+    if (addr == 0x399) {
+      to_fwd->RDHR = (to_fwd->RDHR & 0x00F8031F) | (DAS_ldwStatus << 5) | 
+          (DAS_hands_on_state << 10) | ((DAS_alca_state & 0x03) << 14) |
+          ((DAS_alca_state >> 2) << 16);
+      to_fwd->RDLR = (to_fwd->RDLR & 0xFF3FFFF0) | DAS_op_status  |  (DAS_collision_warning << 22);
+      int cksm = add_tesla_cksm2(to_fwd->RDLR, to_fwd->RDHR, 0x399, 7);
+      to_fwd->RDHR = to_fwd->RDHR | (cksm << 24);
+      return 0;
+    }
+
+    //DAS_status2 (0x389)
+    if (addr == 0x389) {
+      //modify only when we do long Control from OP
+      if (DAS_longC_enabled == 0) {
+        return 0;
+      }
+      uint32_t MLB;
+      uint32_t MHB;
+      int counter = (to_fwd->RDHR >> 20) & 0x0F;
+      float uom = 1.0;
+      if ((DAS_uom == 1) && (DAS_units_included == 1)){
+        uom = 1.0/1.609;
+      }
+      int sl2 = ((int)(DAS_acc_speed_limit * uom / 0.2)) & 0x3FF;
+      if (sl2 == 0) {
+        sl2 = 0x3FF;
+      }
+      MLB = sl2;
+      int lcw = 0x0F;
+      if (DAS_forward_collision_warning > 0) {
+          lcw = 0x01;
+      }
+      int b4 = 0x80;
+      int b5 = 0x13; 
+      if (DAS_cc_state > 1) { //enabled or hold
+          b4 = 0x84;
+          b5 = 0x25; //BB lssState 0x 0x03 should be LSS_STATE_ELK enhanced LK
+          int _DAS_RobState = 0x02; //active
+          int _DAS_radarTelemetry = 0x01; // normal 
+          int _DAS_lssState = 0x03; 
+          int _DAS_acc_report = 0x01; //ACC_report_target_CIPV
+          if (DAS_fleet_speed_state == 2) {
+            _DAS_acc_report = 0x12; //ACC_report_fleet_speed
+          }
+          b4 = (_DAS_acc_report << 2) + ((_DAS_lssState & 0x01) << 7);
+          b5 =((_DAS_lssState >> 1) & 0x01) + (_DAS_radarTelemetry << 2) + (_DAS_RobState <<4);
+      }
+      MLB = MLB + (b4 << 24);
+      MHB = 0x8000 + b5 + (counter << 20) + (lcw << 16);
+      cksm = add_tesla_cksm2(MLB, MHB, 0x389, 7);
+      MHB = MHB + (cksm << 24);
+      to_fwd->RDHR = MHB;
+      to_fwd->RDLR = MLB;
+      return 0;
+    }
+    //DAS_steeringControl (0x488)
+    if (addr == 0x488) {
+      int counter = (to_fwd->RDLR >> 16) & 0x0F;
+      to_fwd->RDHR = 0x00;
+      to_fwd->RDLR = ((DAS_steeringAngle >> 8) & 0x7F) + (DAS_haptic_request << 7) +
+          ((DAS_steeringAngle & 0xFF) << 8) + 
+          (((((DAS_steeringEnabled & controls_allowed & DAS_inDrive)  )<< 6) + counter) << 16);
+      int cksm = add_tesla_cksm2(to_fwd->RDLR, to_fwd->RDHR, 0x488, 3);
+      to_fwd->RDLR = to_fwd->RDLR | (cksm << 24);
+      return 0;
+    }
+    //DAS_warningMatrix0 (0x329)
+    if (addr == 0x329) {
+      to_fwd->RDLR = (to_fwd->RDLR & 0xBEFFFFFF) | bitShift(DAS_canErrors,4,7) | bitShift(DAS_025_steeringOverride,4,1);
+      to_fwd->RDHR = (to_fwd->RDHR & 0xFFFFFDFF) | bitShift(DAS_notInDrive,2,2);
+      return 0;
+    }
+    //DAS_warningMatrix1 (0x369)
+    if (addr == 0x369) {
+      return 0;
+    }
+    //DAS_warningMatrix2 (0x349)
+    if (addr == 0x349) {
+      int ovr = 0;
+      int lcAborting = 0;
+      int lcUnavailableSpeed = 0;
+      if (DAS_alca_state == 0x14) {
+        //lcAborting == 1;
+      }
+      if (DAS_alca_state == 0x05) {
+        //lcUnavailableSpeed = 1;
+      }
+      if ((DAS_cc_state == 2) && (DAS_pedalPressed > 10)) {
+        ovr = 1;
+      }
+      to_fwd->RDLR = (to_fwd->RDLR & 0xC27B9CE5) | bitShift(DAS_gas_to_resume,1,2) |  bitShift(DAS_206_apUnavailable,2,6)  | bitShift(ovr,3,8) |
+          bitShift(lcAborting,2,1) | bitShift(lcUnavailableSpeed,4,1) | bitShift(DAS_211_accNoSeatBelt,3,3) | bitShift(DAS_202_noisyEnvironment,2,2) |
+          bitShift(stopSignWarning,1,4) | bitShift(stopLightWarning,1,5) | bitShift(DAS_207_lkasUnavailable,2,7) | bitShift(DAS_219_lcTempUnavailableSpeed,4,3) |
+          bitShift(DAS_220_lcTempUnavailableRoad,4,4) | bitShift(DAS_221_lcAborting,4,5) | bitShift(DAS_222_accCameraBlind,4,6) | bitShift(DAS_208_rackDetected,2,8);
+      return 0;
+    }
     return 0;
   }
   return -1;
