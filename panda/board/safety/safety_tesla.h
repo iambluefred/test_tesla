@@ -231,7 +231,7 @@ int DAS_emergency_brake_request = 0x00;
 int DAS_fleet_speed_state = 0x00;
 
 //for AP1 integration
-int AP_hardware_detected = 0;
+int AP_hardware_detected = 1;
 
 
 static int add_tesla_crc(uint32_t MLB, uint32_t MHB , int msg_len) {
@@ -1037,7 +1037,7 @@ static int tesla_rx_hook(CAN_FIFOMailBox_TypeDef *to_push)
       int dashw = ((to_push->RDLR >> 6) & 0x03);
       int radhw = ((to_push->RDLR >> 10) & 0x03);
       if (dashw == 1) {
-        DAS_noEpasHarness = 1;
+        DAS_noEpasHarness = 0;
         enable_das_emulation = 0;
         AP_hardware_detected = 1;
         enable_radar_emulation = 0;
@@ -1802,6 +1802,7 @@ static int tesla_fwd_hook(int bus_num, CAN_FIFOMailBox_TypeDef *to_fwd)
 
   //if we never got the config from gtw, don't forward anything anywhere
   if (DAS_gtwConfigReceived == 0) {
+
     return -1;
   }
 
