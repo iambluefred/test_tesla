@@ -406,7 +406,7 @@ static void reset_DAS_data(void) {
 static void do_fake_DAS(uint32_t RIR, uint32_t RDTR) {
   
   //if AP1 don't do fake DAS
-  if (AP_hardware_detected > 0) {
+  if (AP_hardware_detected > 0) || (DAS_gtwConfigReceived == 0) {
     return;
   }
 
