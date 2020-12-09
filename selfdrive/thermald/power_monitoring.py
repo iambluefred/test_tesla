@@ -165,6 +165,7 @@ class PowerMonitoring:
               set_battery_charging(True)
             except Exception:
               cloudlog.exception("Pulsed power measurement failed")
+              set_battery_charging(True)
 
           # Start pulsed measurement and return
           threading.Thread(target=perform_pulse_measurement, args=(now,)).start()
