@@ -150,6 +150,19 @@ def get_can_signals(CP):
   #checks = []
   return signals, checks
 
+ 
+def get_das_can_signals(CP):
+  signals = [
+    ("DAS_autopilotState","DAS_status",0),
+    ("DAS_laneDepartureWarning","DAS_status",0),
+    ("DAS_autoLaneChangeState","DAS_status",0),
+    ("DAS_visionOnlySpeedLimit","DAS_status",0),
+  ]
+
+  checks = [
+    ("DAS_status",12),
+  ]
+
 def get_epas_can_signals(CP):
   signals = [
       ("EPAS_torsionBarTorque", "EPAS_sysStatus", 0), # Used in interface.py
@@ -201,6 +214,7 @@ class CarState(CarStateBase):
 
     ### START OF MAIN CONFIG OPTIONS ###
     ### Do NOT modify here, modify in /data/bb_openpilot.cfg and reboot
+    self.useWithAP1 = False
     self.forcePedalOverCC = True
     self.usesApillarHarness = False
     self.enableHSO = True
@@ -438,6 +452,11 @@ class CarState(CarStateBase):
   def get_epas_parser(CP,epascan):
     signals, checks = get_epas_can_signals(CP)
     return CANParser(DBC[CP.carFingerprint]['pt']+"_epas", signals, checks, epascan)
+
+  @staticmethod
+  def get_das_parser(CP,dascan):
+    signals, checks = get_das_can_signals(CP)
+    return CANParser(DBC[CP.carFingerprint]['pt']+"_das", signals, checks, dascan)
 
   @staticmethod
   def get_pedal_parser(CP,pedalcan):

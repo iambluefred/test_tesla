@@ -43,12 +43,19 @@ class CarInterface(CarInterfaceBase):
     self.cp = self.CS.get_can_parser2(CP,mydbc)
     self.epas_cp = None
     self.pedal_cp = None
-    if self.CS.useWithoutHarness:
+    self.das_cp = None
+    if self.CS.useWithAP1:
+      self.das_cp = self.CS.get_das_parser(CP,2)
       self.epas_cp = self.CS.get_epas_parser(CP,0)
       self.pedal_cp = self.CS.get_pedal_parser(CP,0)
     else:
-      self.epas_cp = self.CS.get_epas_parser(CP,2)
-      self.pedal_cp = self.CS.get_pedal_parser(CP,2)
+      if self.CS.useWithoutHarness:
+        self.epas_cp = self.CS.get_epas_parser(CP,0)
+        self.pedal_cp = self.CS.get_pedal_parser(CP,0)
+      else:
+        self.epas_cp = self.CS.get_epas_parser(CP,2)
+        self.pedal_cp = self.CS.get_pedal_parser(CP,2)
+    
 
     self.CC = None
     if CarController is not None:
@@ -236,8 +243,13 @@ class CarInterface(CarInterfaceBase):
     epas_can_valid = self.epas_cp.can_valid
     self.pedal_cp.update_strings(can_strings)
     pedal_can_valid = self.pedal_cp.can_valid
+    if self.CS.useWithAP1:
+      self.das_cp.update_strings(can_strings)
+      das_can_valid = self.das_cp.can_valid
+    else:
+      das_can_valid = True
 
-    can_rcv_error = not (ch_can_valid and epas_can_valid and pedal_can_valid)
+    can_rcv_error = not (ch_can_valid and epas_can_valid and pedal_can_valid and das_can_valid)
 
     self.CS.update(self.cp, self.epas_cp, self.pedal_cp)
 

@@ -52,6 +52,15 @@ class ConfigFile():
       )
       file_changed |= didUpdate
 
+      #use_with_ap1 -> usesWithAP1
+      into.useWithAP1, didUpdate = self.read_config_entry(
+        config, configr, prev_file_contents, section = main_section,
+        entry = 'use_with_ap1', entry_type = bool,
+        default_value = False,
+        comment = 'Enable when using on AP1 cars.'
+      )
+      file_changed |= didUpdate
+
       #uses_a_pillar_harness -> usesApillarHarness
       into.usesApillarHarness, didUpdate = self.read_config_entry(
         config, configr, prev_file_contents, section = main_section,
@@ -493,6 +502,7 @@ class CarSettings():
 
   userHandle = None
   forceFingerprintTesla = None
+  useWithAP1 = None
   forcePedalOverCC = None
   enableHSO = None
   enableALCA = None
