@@ -246,6 +246,7 @@ class CarInterface(CarInterfaceBase):
     if self.CS.useWithAP1:
       self.das_cp.update_strings(can_strings)
       das_can_valid = self.das_cp.can_valid
+      pedal_can_valid = True
     else:
       das_can_valid = True
 
