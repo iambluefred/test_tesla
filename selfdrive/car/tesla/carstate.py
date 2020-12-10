@@ -162,6 +162,7 @@ def get_das_can_signals(CP):
   checks = [
     ("DAS_status",12),
   ]
+  return signals, checks
 
 def get_epas_can_signals(CP):
   signals = [
