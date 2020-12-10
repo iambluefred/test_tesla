@@ -185,6 +185,9 @@ class ACCController():
 
   # Decide which cruise control buttons to simluate to get the car to the desired speed.
   def update_acc(self, enabled, CS, frame, actuators, pcm_speed, speed_limit_kph, set_speed_limit_active, speed_limit_offset):
+    #if AP1, return NONE
+    if CS.useWithAP1:
+      return None
     # Adaptive cruise control
     self.prev_speed_limit_kph = self.speed_limit_kph
     if set_speed_limit_active and speed_limit_kph > 0:
