@@ -59,6 +59,7 @@ int tesla_speed = 0;
 int current_car_time = -1;
 int time_at_last_stalk_pull = -1;
 int eac_status = 0;
+bool tesla_ignition = false;
 
 
 int tesla_radar_status = 0; //0-not present, 1-initializing, 2-active
@@ -1202,6 +1203,7 @@ static int tesla_rx_hook(CAN_FIFOMailBox_TypeDef *to_push)
       tesla_radar_status = 0;
       puts("Tesla Radar Inactive! (timeout 3) \n");
     } 
+    tesla_ignition = (GET_BYTE(to_push, 0) & 0x1) != 0;
   }
 
   if ((addr == 0x118)  && (bus_number == 0))
@@ -1806,10 +1808,32 @@ static int tesla_fwd_hook(int bus_num, CAN_FIFOMailBox_TypeDef *to_fwd)
     return -1;
   }
 
+  //if car is off, forward 0->2 and 2->0, except Pedal messages
+  //no need to worry about radar when ignition is off
+  if (!tesla_ignition) {
+    //no forwarding if noEpasHarness
+    if (DAS_noEpasHarness == 1) {
+      return -1;
+    }
+    //forward 0->2
+    if (bus_num == 0) {
+      return 2;
+    }
+    //forward 2->0
+    if (bus_num == 2) {
+      //if Pedal, do nothing
+      if ((addr == 551) || (addr == 552)) {
+        return -1;
+      }
+      return 0;
+    }
+    //ignore other CANs
+    return -1;
+  }
+  //OK, car IS on
   //first let's deal with the messages we need to send to radar
   if (((bus_num == 0) || ((bus_num == 2 ) && (DAS_usesApillarHarness == 1))) && (AP_hardware_detected == 0))
   {
-    
     //compute return value; do not forward 0->2 and 2->0 if no epas harness
     if (bus_num == 0) {
       if (DAS_noEpasHarness == 0) {
@@ -1853,6 +1877,7 @@ static int tesla_fwd_hook(int bus_num, CAN_FIFOMailBox_TypeDef *to_fwd)
   //now let's deal with CAN0 alone
   if (bus_num == 0) {
 
+    //if we have AP1
     if (AP_hardware_detected == 1) {
       //if no EON just forward everything as is
       if (EON_is_connected == 0) {
@@ -1906,30 +1931,23 @@ static int tesla_fwd_hook(int bus_num, CAN_FIFOMailBox_TypeDef *to_fwd)
     return -1;
   }
 
-  //now let's deal with CAN2 non AP1 (EPAS messages)
-  if ((bus_num == tesla_epas_can) && (bus_num > 0))
-  {
+  //now let's deal with CAN2 for AP1 (DAS messages)
+  if ((bus_num == 2) && (AP_hardware_detected == 1)) {
 
+    //if for some reason there is a Pedal
     // remove Pedal in forwards
     if ((addr == 0x551) || (addr == 0x552)) {
       return -1;
     }
 
-    //forward everything else to CAN 0 unless claiming no harness
-    return 0;
-  }
-
-  //now let's deal with CAN2 for AP1 (DAS messages)
-  if ((bus_num == 2) && (AP_hardware_detected == 1)) {
-    //let's now modify the AP1 messages
-    //if NO EON present, just forward, we use AP1
-    if (EON_is_connected == 0) {
+    //if no EON present or OP is not engaged, just forward, we use AP1
+    if ((EON_is_connected == 0) || (DAS_steeringEnabled == 0)) {
       return 0;
     }
-    //if OP is not engaged, just forward as is
 
     //if OP is engaged, then modify some messages
     //we want to modify the following messages
+
     //DAS_bodyControls (0x3E9)
     if (addr == 0x3E9)
     {
@@ -2052,6 +2070,7 @@ static int tesla_fwd_hook(int bus_num, CAN_FIFOMailBox_TypeDef *to_fwd)
       to_fwd->RDLR = MLB;
       return 0;
     }
+
     //DAS_steeringControl (0x488)
     if (addr == 0x488) {
       int counter = (to_fwd->RDLR >> 16) & 0x0F;
@@ -2063,16 +2082,19 @@ static int tesla_fwd_hook(int bus_num, CAN_FIFOMailBox_TypeDef *to_fwd)
       to_fwd->RDLR = to_fwd->RDLR | (cksm << 24);
       return 0;
     }
+
     //DAS_warningMatrix0 (0x329)
     if (addr == 0x329) {
       to_fwd->RDLR = (to_fwd->RDLR & 0xBEFFFFFF) | bitShift(DAS_canErrors,4,7) | bitShift(DAS_025_steeringOverride,4,1);
       to_fwd->RDHR = (to_fwd->RDHR & 0xFFFFFDFF) | bitShift(DAS_notInDrive,2,2);
       return 0;
     }
+
     //DAS_warningMatrix1 (0x369)
     if (addr == 0x369) {
       return 0;
     }
+
     //DAS_warningMatrix2 (0x349)
     if (addr == 0x349) {
       int ovr = 0;
@@ -2095,6 +2117,21 @@ static int tesla_fwd_hook(int bus_num, CAN_FIFOMailBox_TypeDef *to_fwd)
     }
     return 0;
   }
+
+  //now let's deal with CAN2 non AP1 (EPAS messages)
+  if ((bus_num == tesla_epas_can) && (bus_num > 0))
+  {
+
+    // remove Pedal in forwards
+    if ((addr == 0x551) || (addr == 0x552)) {
+      return -1;
+    }
+
+    //forward everything else to CAN 0
+    return 0;
+  }
+
+  
   return -1;
 }
 
